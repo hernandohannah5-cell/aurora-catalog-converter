@@ -22,7 +22,6 @@ if uploaded_file:
         def clean_series_title(val):
             if pd.isna(val):
                 return ''
-            # Kukunin lang ang unang linya, tatanggalin ang \n, \r, bullets, at extra spaces
             first_line = str(val).split('\n')[0]
             clean = re.sub(r'[•\r]', '', first_line).strip()
             return clean
@@ -30,7 +29,7 @@ if uploaded_file:
         def extract_beam_angles(val):
             if pd.isna(val):
                 return ['', '', '', '']
-            clean_str = str(val).replace('•', '').replace('\r', '').replace('\n', ' ')
+            clean_str = str(val).replace('•', '').replace('˚', '').replace('°', '').replace('\r', '').replace('\n', ' ')
             angles = [a.strip() for a in re.split(r'[\n,]+', clean_str) if a.strip()]
             while len(angles) < 4:
                 angles.append('')
