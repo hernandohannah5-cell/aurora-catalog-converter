@@ -58,10 +58,11 @@ if uploaded_file:
                     page_row[f'Cutout_{idx}'] = str(item.get('Cutout size', '')).strip()
                     page_row[f'CCT_{idx}'] = str(item.get('CCT', '')).strip()
                     
-                    page_row[f'Beam_{idx}_1'] = item.get('Beam_A', '')
-                    page_row[f'Beam_{idx}_2'] = item.get('Beam_B', '')
-                    page_row[f'Beam_{idx}_3'] = item.get('Beam_C', '')
-                    page_row[f'Beam_{idx}_4'] = item.get('Beam_D', '')
+                    # Single-letter tags (3 chars total including brackets)
+                    page_row['A'] = item.get('Beam_A', '')
+                    page_row['B'] = item.get('Beam_B', '')
+                    page_row['C'] = item.get('Beam_C', '')
+                    page_row['D'] = item.get('Beam_D', '')
                     
                     page_row[f'@Image_{idx}'] = f"Images/{str(item.get('Item code', '')).strip()}.png"
                     
@@ -74,7 +75,7 @@ if uploaded_file:
         st.download_button(
             label="📥 Download Cleaned CSV File",
             data=csv_data,
-            file_name="pivoted_catalog_data_v3.csv",
+            file_name="pivoted_catalog_data_v6.csv",
             mime="text/csv"
         )
     except Exception as e:
