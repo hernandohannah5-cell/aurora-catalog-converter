@@ -4,50 +4,61 @@ import streamlit as st
 import pdfplumber
 
 st.set_page_config(page_title="Catalog Data Merger", layout="wide")
-st.title("📦 Aurora Catalog CSV Converter (Smart SKU Match)")
+st.title("📦 Aurora Catalog CSV Converter (Smart PDF + Excel)")
 
 col1, col2 = st.columns(2)
 with col1:
     uploaded_excel = st.file_uploader("1. Upload Excel File (Primary)", type=["xlsx"])
 with col2:
-    uploaded_pdf = st.file_uploader("2. Upload PDF File (Optional Spec Sheet)", type=["pdf"])
+    uploaded_pdf = st.file_uploader("2. Upload PDF Catalog (Optional)", type=["pdf"])
 
 def normalize_sku_key(sku):
-    """ Normalize SKU so 'AJE...' and 'XJE...' match seamlessly """
     if not sku:
         return ""
     sku_str = str(sku).strip().upper()
-    # Replace starting 'AJE' or 'XJE' with standard 'JE' for matching
     return re.sub(r'^[AX]JE', 'JE', sku_str)
 
 pdf_extra_data = {}
 
-# Process PDF only if uploaded by user
+# Accurate PDF Parsing for Aurora PDF Catalog Layout
 if uploaded_pdf:
     try:
         with pdfplumber.open(uploaded_pdf) as pdf:
             for page in pdf.pages:
-                tables = page.extract_tables()
-                for table in tables:
-                    for row in table:
-                        if not row or len(row) < 2:
-                            continue
-                        row_str = " ".join([str(cell) for cell in row if cell])
-                        
-                        # Find any SKU pattern starting with AJE or XJE
-                        sku_match = re.search(r'[AX]JE[A-Za-z0-9\-]+', row_str)
-                        if sku_match:
-                            raw_sku = sku_match.group(0).strip()
-                            norm_key = normalize_sku_key(raw_sku)
-                            
-                            flex_val = 'Adjustable' if 'adjust' in row_str.lower() else ('Fixed' if 'fix' in row_str.lower() else '')
-                            mount_val = 'Recessed' if 'recess' in row_str.lower() else ('Surface' if 'surface' in row_str.lower() else '')
-                            
-                            pdf_extra_data[norm_key] = {
-                                'Flex': flex_val,
-                                'Mounting': mount_val
-                            }
-        st.info(f"📄 Smart PDF Extracted: Found extra specs for {len(pdf_extra_data)} SKUs (Matching 'A' and 'X' codes).")
+                text = page.extract_text() or ""
+                
+                # Extract all SKUs found in headers (e.g. XJE01075F, AJE01075AT, etc.)
+                sku_matches = list(re.finditer(r'([AX]JE[0-9]{4,5}[A-Za-z0-9]*)\b', text))
+                
+                for match in sku_matches:
+                    raw_sku = match.group(1).strip()
+                    norm_key = normalize_sku_key(raw_sku)
+                    
+                    # Determine Flex (Adjustable vs Fixed) based on SKU suffix (A vs F)
+                    flex_val = 'Fixed'
+                    if raw_sku.endswith('A') or 'A' in raw_sku[7:]:
+                        flex_val = 'Adjustable'
+                    
+                    mount_val = 'Recessed'
+                    
+                    # Search text block around SKU for Voltage & Current
+                    start_pos = match.start()
+                    snippet = text[start_pos:start_pos + 600] # look ahead 600 chars
+                    
+                    volt_match = re.search(r'([0-9]{2}\-[0-9]{2}\s*V|[0-9]{2}\s*V)', snippet, re.IGNORECASE)
+                    curr_match = re.search(r'([0-9]{3}\s*mA)', snippet, re.IGNORECASE)
+                    
+                    volt_val = volt_match.group(1).replace(' ', '') if volt_match else ''
+                    curr_val = curr_match.group(1).replace(' ', '') if curr_match else ''
+                    
+                    pdf_extra_data[norm_key] = {
+                        'Flex': flex_val,
+                        'Mounting': mount_val,
+                        'Voltage': volt_val,
+                        'Current': curr_val
+                    }
+                    
+        st.success(f"📄 Smart PDF Extracted: Successfully mapped {len(pdf_extra_data)} SKUs (Matching 'A' and 'X' codes)!")
     except Exception as e:
         st.warning(f"Could not parse PDF completely: {e}")
 
@@ -105,10 +116,16 @@ if uploaded_excel:
                     page_row[f'Cutout_{idx}'] = str(item.get('Cutout size', '')).strip()
                     page_row[f'CCT_{idx}'] = str(item.get('CCT', '')).strip()
                     
-                    # Smart Lookup: PDF Data -> Excel Columns -> Default Fallbacks
+                    # PDF lookup with fallback
                     pdf_info = pdf_extra_data.get(norm_key, {})
-                    page_row[f'Flex_{idx}'] = pdf_info.get('Flex') or item.get('Flex', 'Fixed')
+                    
+                    # Flex logic: PDF -> Suffix check -> Default
+                    auto_flex = 'Adjustable' if ('A' in raw_sku[7:] or raw_sku.endswith('A')) else 'Fixed'
+                    page_row[f'Flex_{idx}'] = pdf_info.get('Flex') or item.get('Flex', auto_flex)
                     page_row[f'Mount_{idx}'] = pdf_info.get('Mounting') or item.get('Mounting', 'Recessed')
+                    
+                    page_row[f'Voltage_{idx}'] = pdf_info.get('Voltage') or str(item.get('LED Voltage', '')).strip()
+                    page_row[f'Current_{idx}'] = pdf_info.get('Current') or str(item.get('LED Current', '')).strip()
                     
                     # Single-letter Beam Angle tags (3 chars total)
                     page_row['A'] = item.get('Beam_A', '')
@@ -127,7 +144,7 @@ if uploaded_excel:
         st.download_button(
             label="📥 Download Pivoted CSV File",
             data=csv_data,
-            file_name="pivoted_catalog_data_v8.csv",
+            file_name="pivoted_catalog_data_v9.csv",
             mime="text/csv"
         )
     except Exception as e:
