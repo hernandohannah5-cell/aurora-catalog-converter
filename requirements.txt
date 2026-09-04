@@ -1,6 +1,4 @@
 streamlit
 pandas
 openpyxl
-pdfplumber
-pypdf
 pyarrow<25.0.0
